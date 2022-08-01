@@ -46,6 +46,7 @@ import org.gradle.execution.plan.ExecutionNodeAccessHierarchy
 import org.gradle.execution.plan.LocalTaskNode
 import org.gradle.execution.plan.Node
 import org.gradle.execution.plan.NodeExecutor
+import org.gradle.execution.plan.OrdinalGroupFactory
 import org.gradle.execution.plan.PlanExecutor
 import org.gradle.execution.plan.SelfExecutingNode
 import org.gradle.execution.plan.TaskDependencyResolver
@@ -78,7 +79,7 @@ class DefaultTaskExecutionGraphSpec extends AbstractExecutionPlanSpec {
     def parallelismConfiguration = new DefaultParallelismConfiguration(true, 1)
     def workerLeases = new DefaultWorkerLeaseService(coordinator, parallelismConfiguration)
     def executorFactory = Mock(ExecutorFactory)
-    def taskNodeFactory = new TaskNodeFactory(thisBuild, Stub(DocumentationRegistry), Stub(BuildTreeWorkGraphController), nodeValidator)
+    def taskNodeFactory = new TaskNodeFactory(thisBuild, Stub(DocumentationRegistry), Stub(BuildTreeWorkGraphController), nodeValidator, new TestBuildOperationExecutor())
     def dependencyResolver = new TaskDependencyResolver([new TaskNodeDependencyResolver(taskNodeFactory)])
     def projectStateRegistry = Stub(ProjectStateRegistry)
     def executionPlan = newExecutionPlan()
@@ -610,7 +611,7 @@ class DefaultTaskExecutionGraphSpec extends AbstractExecutionPlanSpec {
     }
 
     private DefaultExecutionPlan newExecutionPlan() {
-        return new DefaultExecutionPlan(Path.ROOT.toString(), taskNodeFactory, dependencyResolver, new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), coordinator)
+        return new DefaultExecutionPlan(Path.ROOT.toString(), taskNodeFactory, new OrdinalGroupFactory(), dependencyResolver, new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), coordinator)
     }
 
     def task(String name, Task... dependsOn = []) {

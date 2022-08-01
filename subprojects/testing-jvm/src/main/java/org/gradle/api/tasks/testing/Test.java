@@ -18,6 +18,7 @@ package org.gradle.api.tasks.testing;
 
 import com.google.common.collect.Lists;
 import groovy.lang.Closure;
+import groovy.lang.DelegatesTo;
 import org.gradle.StartParameter;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
@@ -43,6 +44,7 @@ import org.gradle.api.internal.tasks.testing.worker.TestWorker;
 import org.gradle.api.jvm.ModularitySpec;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Classpath;
@@ -70,13 +72,14 @@ import org.gradle.internal.concurrent.CompositeStoppable;
 import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.jvm.DefaultModularitySpec;
 import org.gradle.internal.jvm.JavaModuleDetector;
-import org.gradle.internal.jvm.Jvm;
 import org.gradle.internal.jvm.UnsupportedJavaRuntimeException;
 import org.gradle.internal.jvm.inspection.JvmVersionDetector;
 import org.gradle.internal.scan.UsedByScanPlugin;
 import org.gradle.internal.time.Clock;
 import org.gradle.internal.work.WorkerLeaseService;
 import org.gradle.jvm.toolchain.JavaLauncher;
+import org.gradle.jvm.toolchain.JavaToolchainService;
+import org.gradle.jvm.toolchain.internal.CurrentJvmToolchainSpec;
 import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.process.JavaDebugOptions;
 import org.gradle.process.JavaForkOptions;
@@ -964,7 +967,7 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      *
      * @return The test framework options.
      */
-    public TestFrameworkOptions options(Closure testFrameworkConfigure) {
+    public TestFrameworkOptions options(@DelegatesTo(TestFrameworkOptions.class) Closure testFrameworkConfigure) {
         return ConfigureUtil.configure(testFrameworkConfigure, getOptions());
     }
 
@@ -1023,7 +1026,7 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      *
      * @param testFrameworkConfigure A closure used to configure JUnit4 options.
      */
-    public void useJUnit(@Nullable Closure testFrameworkConfigure) {
+    public void useJUnit(@Nullable @DelegatesTo(JUnitOptions.class) Closure testFrameworkConfigure) {
         useJUnit(ConfigureUtil.<JUnitOptions>configureUsing(testFrameworkConfigure));
     }
 
@@ -1047,8 +1050,8 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      * JUnit Platform supports multiple test engines, which allows other testing frameworks to be built on top of it.
      * You may need to use this option even if you are not using JUnit directly.
      *
-     * @since 4.6
      * @see #useJUnitPlatform(org.gradle.api.Action) Configure JUnit Platform specific options.
+     * @since 4.6
      */
     public void useJUnitPlatform() {
         useJUnitPlatform(Actions.<JUnitPlatformOptions>doNothing());
@@ -1087,7 +1090,7 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      *
      * @param testFrameworkConfigure A closure used to configure TestNG options.
      */
-    public void useTestNG(Closure testFrameworkConfigure) {
+    public void useTestNG(@DelegatesTo(TestNGOptions.class) Closure testFrameworkConfigure) {
         useTestNG(configureUsing(testFrameworkConfigure));
     }
 
@@ -1251,12 +1254,32 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
     }
 
     private String getEffectiveExecutable() {
-        if (javaLauncher.isPresent()) {
-            // The below line is OK because it will only be exercised in the Gradle daemon and not in the worker running tests.
-            return javaLauncher.get().getExecutablePath().toString();
+        String executable = forkOptions.getExecutable();
+        if (executable != null) {
+            return executable;
         }
-        final String executable = getExecutable();
-        return executable == null ? Jvm.current().getJavaExecutable().getAbsolutePath() : executable;
+
+        return getLauncher().get().getExecutablePath().toString();
     }
 
+    /**
+     * We create a launcher for the current JVM as well, so the progress event for toolchains is emitted.
+     */
+    private Provider<JavaLauncher> getLauncher() {
+        if (forkOptions.getExecutable() != null) {
+            throw new IllegalStateException("Explicit executable cannot be resolved into a toolchain");
+        }
+
+        if (javaLauncher.isPresent()) {
+            return this.javaLauncher;
+        }
+
+        CurrentJvmToolchainSpec currentToolchainSpec = new CurrentJvmToolchainSpec(getObjectFactory());
+        return getJavaToolchainService().launcherFor(currentToolchainSpec);
+    }
+
+    @Inject
+    protected JavaToolchainService getJavaToolchainService() {
+        throw new UnsupportedOperationException();
+    }
 }

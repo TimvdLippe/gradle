@@ -26,6 +26,7 @@ import org.gradle.api.specs.Spec
 import org.gradle.api.tasks.TaskDependency
 import org.gradle.composite.internal.BuildTreeWorkGraphController
 import org.gradle.internal.file.Stat
+import org.gradle.internal.operations.TestBuildOperationExecutor
 import org.gradle.util.Path
 import org.gradle.util.internal.TextUtil
 import spock.lang.Issue
@@ -39,7 +40,7 @@ import static org.gradle.util.internal.WrapUtil.toList
 class DefaultExecutionPlanTest extends AbstractExecutionPlanSpec {
     DefaultExecutionPlan executionPlan
 
-    def taskNodeFactory = new TaskNodeFactory(thisBuild, Stub(DocumentationRegistry), Stub(BuildTreeWorkGraphController), nodeValidator)
+    def taskNodeFactory = new TaskNodeFactory(thisBuild, Stub(DocumentationRegistry), Stub(BuildTreeWorkGraphController), nodeValidator, new TestBuildOperationExecutor())
     def dependencyResolver = new TaskDependencyResolver([new TaskNodeDependencyResolver(taskNodeFactory)])
 
     def setup() {
@@ -48,7 +49,7 @@ class DefaultExecutionPlanTest extends AbstractExecutionPlanSpec {
 
     private DefaultExecutionPlan newExecutionPlan() {
         executionPlan?.close()
-        new DefaultExecutionPlan(Path.ROOT.toString(), taskNodeFactory, dependencyResolver, new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), coordinator)
+        new DefaultExecutionPlan(Path.ROOT.toString(), taskNodeFactory, new OrdinalGroupFactory(), dependencyResolver, new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), new ExecutionNodeAccessHierarchy(CASE_SENSITIVE, Stub(Stat)), coordinator)
     }
 
     def "schedules tasks in dependency order"() {
@@ -1064,6 +1065,7 @@ class DefaultExecutionPlanTest extends AbstractExecutionPlanSpec {
     private Node node(Node... dependencies) {
         def action = Stub(WorkNodeAction)
         _ * action.owningProject >> null
+        _ * action.preExecutionNode >> null
         def node = new ActionNode(action)
         dependencies.each {
             node.addDependencySuccessor(it)

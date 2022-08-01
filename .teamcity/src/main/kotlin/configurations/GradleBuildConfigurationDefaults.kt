@@ -1,25 +1,28 @@
 package configurations
 
+import common.Arch
+import common.BuildToolBuildJvm
+import common.Jvm
 import common.Os
 import common.VersionedSettingsBranch
 import common.applyDefaultSettings
 import common.buildToolGradleParameters
 import common.checkCleanM2AndAndroidUserHome
 import common.compileAllDependency
+import common.dependsOn
 import common.functionalTestParameters
 import common.gradleWrapper
 import common.killProcessStep
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildFeatures
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildSteps
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
-import jetbrains.buildServer.configs.kotlin.v2019_2.FailureAction
 import jetbrains.buildServer.configs.kotlin.v2019_2.ProjectFeatures
 import jetbrains.buildServer.configs.kotlin.v2019_2.RelativeId
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.PullRequests
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.commitStatusPublisher
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.pullRequests
 import model.CIBuildModel
-import model.StageNames
+import model.StageName
 
 val m2CleanScriptUnixLike = """
     REPO=%teamcity.agent.jvm.user.home%/.m2/repository
@@ -71,7 +74,7 @@ fun BuildFeatures.publishBuildStatusToGithub(model: CIBuildModel) {
 
 fun BuildFeatures.enablePullRequestFeature() {
     pullRequests {
-        vcsRootExtId = "GradleBuildTooBranches"
+        vcsRootExtId = "GradleMaster"
         provider = github {
             authType = token {
                 token = "%github.bot-teamcity.token%"
@@ -84,7 +87,7 @@ fun BuildFeatures.enablePullRequestFeature() {
 
 fun BuildFeatures.publishBuildStatusToGithub() {
     commitStatusPublisher {
-        vcsRootExtId = "GradleBuildTooBranches"
+        vcsRootExtId = "GradleMaster"
         publisher = github {
             githubUrl = "https://api.github.com"
             authType = personalToken {
@@ -125,7 +128,7 @@ fun applyDefaults(
     model: CIBuildModel,
     buildType: BaseGradleBuildType,
     gradleTasks: String,
-    notQuick: Boolean = false,
+    dependsOnQuickFeedbackLinux: Boolean = false,
     os: Os = Os.LINUX,
     extraParameters: String = "",
     timeout: Int = 90,
@@ -142,22 +145,24 @@ fun applyDefaults(
         checkCleanM2AndAndroidUserHome(os)
     }
 
-    applyDefaultDependencies(model, buildType, notQuick)
+    applyDefaultDependencies(model, buildType, dependsOnQuickFeedbackLinux)
 }
 
 fun applyTestDefaults(
     model: CIBuildModel,
     buildType: BaseGradleBuildType,
     gradleTasks: String,
-    notQuick: Boolean = false,
+    dependsOnQuickFeedbackLinux: Boolean = false,
+    buildJvm: Jvm = BuildToolBuildJvm,
     os: Os = Os.LINUX,
+    arch: Arch = Arch.AMD64,
     extraParameters: String = "",
     timeout: Int = 90,
     extraSteps: BuildSteps.() -> Unit = {}, // the steps after runner steps
     daemon: Boolean = true,
     preSteps: BuildSteps.() -> Unit = {} // the steps before runner steps
 ) {
-    buildType.applyDefaultSettings(os, timeout = timeout)
+    buildType.applyDefaultSettings(os, timeout = timeout, buildJvm = buildJvm, arch = arch)
 
     buildType.steps {
         preSteps()
@@ -174,21 +179,16 @@ fun applyTestDefaults(
         checkCleanM2AndAndroidUserHome(os)
     }
 
-    applyDefaultDependencies(model, buildType, notQuick)
+    applyDefaultDependencies(model, buildType, dependsOnQuickFeedbackLinux)
 }
 
 fun buildScanTag(tag: String) = """"-Dscan.tag.$tag""""
 fun buildScanCustomValue(key: String, value: String) = """"-Dscan.value.$key=$value""""
-fun applyDefaultDependencies(model: CIBuildModel, buildType: BuildType, notQuick: Boolean = false) {
-    if (notQuick) {
+fun applyDefaultDependencies(model: CIBuildModel, buildType: BuildType, dependsOnQuickFeedbackLinux: Boolean) {
+    if (dependsOnQuickFeedbackLinux) {
         // wait for quick feedback phase to finish successfully
         buildType.dependencies {
-            dependency(RelativeId(stageTriggerId(model, StageNames.QUICK_FEEDBACK_LINUX_ONLY))) {
-                snapshot {
-                    onDependencyFailure = FailureAction.FAIL_TO_START
-                    onDependencyCancel = FailureAction.FAIL_TO_START
-                }
-            }
+            dependsOn(RelativeId(stageTriggerId(model, StageName.QUICK_FEEDBACK_LINUX_ONLY)))
         }
     }
     if (buildType !is CompileAllProduction) {

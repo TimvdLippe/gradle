@@ -40,6 +40,7 @@ import org.gradle.execution.plan.ExecutionNodeAccessHierarchies
 import org.gradle.execution.plan.ExecutionPlan
 import org.gradle.execution.plan.Node
 import org.gradle.execution.plan.NodeValidator
+import org.gradle.execution.plan.OrdinalGroupFactory
 import org.gradle.execution.plan.PlanExecutor
 import org.gradle.execution.plan.SelfExecutingNode
 import org.gradle.execution.plan.TaskDependencyResolver
@@ -66,7 +67,6 @@ import org.gradle.internal.work.WorkerLeaseService
 import org.gradle.util.Path
 import org.gradle.util.TestUtil
 import org.gradle.util.internal.RedirectStdOutAndErr
-import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 import org.junit.Rule
 import spock.lang.Shared
@@ -254,17 +254,9 @@ class DefaultIncludedBuildTaskGraphParallelTest extends AbstractIncludedBuildTas
 
     private BuildWorkGraphController buildWorkGraphController(String displayName, BuildServices services) {
         def builder = Mock(BuildLifecycleController.WorkGraphBuilder)
-        def nodeFactory = new TaskNodeFactory(services.gradle, Stub(DocumentationRegistry), Stub(BuildTreeWorkGraphController), Stub(NodeValidator))
+        def nodeFactory = new TaskNodeFactory(Stub(GradleInternal), Stub(DocumentationRegistry), Stub(BuildTreeWorkGraphController), Stub(NodeValidator), new TestBuildOperationExecutor())
         def hierarchies = new ExecutionNodeAccessHierarchies(CaseSensitivity.CASE_SENSITIVE, TestFiles.fileSystem())
-        def dependencyResolver = Stub(TaskDependencyResolver)
-        _ * dependencyResolver.resolveDependenciesFor(_, _) >> { TaskInternal task, Object dependencies ->
-            if (dependencies instanceof TaskDependency) {
-                dependencies.getDependencies(task)
-            } else {
-                []
-            }
-        }
-        def plan = new DefaultExecutionPlan(displayName, nodeFactory, dependencyResolver, hierarchies.outputHierarchy, hierarchies.destroyableHierarchy, services.services.coordinationService)
+        def plan = new DefaultExecutionPlan(displayName, nodeFactory, new OrdinalGroupFactory(), Stub(TaskDependencyResolver), hierarchies.outputHierarchy, hierarchies.destroyableHierarchy, services.coordinationService)
         def workPlan = Stub(BuildWorkPlan) {
             _ * stop() >> { plan.close() }
         }
@@ -436,11 +428,6 @@ class DefaultIncludedBuildTaskGraphParallelTest extends AbstractIncludedBuildTas
         @Override
         String toString() {
             return displayName
-        }
-
-        @Override
-        int compareTo(@NotNull Node o) {
-            return -1
         }
 
         @Override
